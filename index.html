@@ -4,83 +4,158 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Convertidor Multimedia Pro</title>
-    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="coi-serviceworker.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.umd.js"></script>
+    <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+
     <style>
-        body { font-family: sans-serif; background: #f4f4f9; display: flex; justify-content: center; padding: 20px; }
-        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-        h1 { color: #333; font-size: 1.5rem; text-align: center; }
-        .tool-section { margin-bottom: 30px; border-bottom: 1px solid #eee; pb: 20px; }
-        input[type="file"] { margin: 10px 0; width: 100%; }
-        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; width: 100%; }
-        button:hover { background: #0056b3; }
-        .status { font-size: 0.8rem; color: #666; margin-top: 5px; }
+        :root { --primary: #2563eb; --bg: #f8fafc; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 40px 20px; color: #1e293b; }
+        .card { background: white; padding: 2.5rem; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 550px; }
+        h1 { text-align: center; margin-bottom: 2rem; color: #0f172a; font-weight: 800; }
+        .tool-section { margin-bottom: 2rem; padding: 1.5rem; border: 1px solid #e2e8f0; border-radius: 12px; transition: 0.3s; }
+        .tool-section:hover { border-color: var(--primary); }
+        h3 { margin-top: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
+        input[type="file"] { margin: 15px 0; font-size: 0.9rem; width: 100%; }
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; transition: opacity 0.2s; }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
+        .status { margin-top: 12px; font-size: 0.85rem; color: #64748b; font-style: italic; min-height: 1.2rem; }
+        #log { font-family: monospace; background: #000; color: #0f0; padding: 10px; border-radius: 5px; font-size: 10px; margin-top: 10px; max-height: 100px; overflow-y: auto; display: none; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>🔄 Convertidor de Archivos</h1>
+    <h1>Multimedia Converter 🔄</h1>
 
     <div class="tool-section">
-        <h3>1. JPG a PNG</h3>
+        <h3>🖼️ JPG a PNG</h3>
         <input type="file" id="jpgInput" accept="image/jpeg">
-        <button onclick="convertJpgToPng()">Convertir y Descargar</button>
-        <canvas id="canvas" style="display:none;"></canvas>
+        <button id="btnJpg" onclick="convertJpgToPng()">Convertir y Descargar</button>
+        <div id="jpgStatus" class="status"></div>
     </div>
 
     <div class="tool-section">
-        <h3>2. PDF a MP4 (Beta)</h3>
-        <p style="font-size: 0.7rem;">Nota: Para PDFs, esta versión básica extrae texto/metadata. Para video real se requiere ffmpeg.wasm.</p>
+        <h3>📄 PDF a MP4 (Video)</h3>
         <input type="file" id="pdfInput" accept="application/pdf">
-        <button onclick="convertPdfToMp4()">Procesar PDF</button>
+        <button id="btnPdf" onclick="convertPdfToMp4()">Generar Video MP4</button>
         <div id="pdfStatus" class="status"></div>
+        <div id="log"></div>
     </div>
+    
+    <canvas id="hiddenCanvas" style="display:none;"></canvas>
 </div>
 
 <script>
-    // --- Lógica JPG a PNG ---
+    const { FFmpeg } = FFmpegWASM;
+    const { fetchFile } = FFmpegUtil;
+    let ffmpeg = null;
+
+    // --- LÓGICA JPG A PNG ---
     function convertJpgToPng() {
         const input = document.getElementById('jpgInput');
+        const status = document.getElementById('jpgStatus');
         if (!input.files[0]) return alert("Selecciona un archivo JPG");
 
+        status.innerText = "Procesando...";
         const reader = new FileReader();
         reader.onload = function(e) {
             const img = new Image();
             img.onload = function() {
-                const canvas = document.getElementById('canvas');
+                const canvas = document.getElementById('hiddenCanvas');
                 canvas.width = img.width;
                 canvas.height = img.height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0);
                 
                 const link = document.createElement('a');
-                link.download = 'imagen_convertida.png';
+                link.download = 'imagen.png';
                 link.href = canvas.toDataURL('image/png');
                 link.click();
+                status.innerText = "¡Completado!";
             };
             img.src = e.target.result;
         };
         reader.readAsDataURL(input.files[0]);
     }
 
-    // --- Lógica PDF (Esquema Inicial) ---
+    // --- LÓGICA PDF A MP4 (REAL) ---
     async function convertPdfToMp4() {
         const input = document.getElementById('pdfInput');
+        const btn = document.getElementById('btnPdf');
         const status = document.getElementById('pdfStatus');
-        if (!input.files[0]) return alert("Selecciona un PDF");
+        const logBox = document.getElementById('log');
 
-        status.innerText = "Leyendo PDF...";
-        const arrayBuffer = await input.files[0].arrayBuffer();
-        const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
-        const pages = pdfDoc.getPages();
+        if (!input.files[0]) return alert("Selecciona un PDF");
         
-        status.innerText = `PDF cargado: ${pages.length} páginas. Generando video (Simulado)...`;
-        
-        // Aquí se integraría ffmpeg.wasm para renderizar cada página como frame
-        setTimeout(() => {
-            alert("El procesamiento de PDF a MP4 requiere un entorno con SharedArrayBuffer configurado en GitHub Pages.");
-            status.innerText = "Listo.";
-        }, 2000);
+        btn.disabled = true;
+        logBox.style.display = "block";
+        status.innerText = "Cargando motor de video (FFmpeg)...";
+
+        try {
+            // 1. Inicializar FFmpeg
+            if (!ffmpeg) {
+                ffmpeg = new FFmpeg();
+                ffmpeg.on('log', ({ message }) => {
+                    logBox.innerText = message;
+                    console.log(message);
+                });
+                await ffmpeg.load({
+                    coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
+                });
+            }
+
+            // 2. Renderizar PDF a Imágenes usando PDF.js
+            status.innerText = "Renderizando páginas del PDF...";
+            const arrayBuffer = await input.files[0].arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            
+            for (let i = 1; i <= pdf.numPages; i++) {
+                status.innerText = `Renderizando página ${i} de ${pdf.numPages}...`;
+                const page = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: 1.5 });
+                const canvas = document.getElementById('hiddenCanvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                
+                // Convertir canvas a blob y escribir en el sistema de archivos virtual de FFmpeg
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+                const fileName = `page${i.toString().padStart(3, '0')}.jpg`;
+                await ffmpeg.writeFile(fileName, await fetchFile(blob));
+            }
+
+            // 3. Ejecutar comando de conversión (3 segundos por página)
+            status.innerText = "Codificando video MP4...";
+            await ffmpeg.exec([
+                '-framerate', '1/3',         // Cada imagen dura 3 segundos
+                '-i', 'page%03d.jpg',       // Patrón de archivos
+                '-c:v', 'libx264',          // Codec de video
+                '-t', `${pdf.numPages * 3}`, // Duración total
+                '-pix_fmt', 'yuv420p',      // Compatibilidad universal
+                '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', // Asegurar dimensiones pares para x264
+                'output.mp4'
+            ]);
+
+            // 4. Descargar el resultado
+            const data = await ffmpeg.readFile('output.mp4');
+            const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'pdf_presentacion.mp4';
+            a.click();
+
+            status.innerText = "¡Video generado con éxito!";
+        } catch (error) {
+            console.error(error);
+            status.innerText = "Error: " + error.message;
+        } finally {
+            btn.disabled = false;
+        }
     }
 </script>
 
