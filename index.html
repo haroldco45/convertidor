@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convertidor Multimedia Pro</title>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f9; display: flex; justify-content: center; padding: 20px; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        h1 { color: #333; font-size: 1.5rem; text-align: center; }
+        .tool-section { margin-bottom: 30px; border-bottom: 1px solid #eee; pb: 20px; }
+        input[type="file"] { margin: 10px 0; width: 100%; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; width: 100%; }
+        button:hover { background: #0056b3; }
+        .status { font-size: 0.8rem; color: #666; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>🔄 Convertidor de Archivos</h1>
+
+    <div class="tool-section">
+        <h3>1. JPG a PNG</h3>
+        <input type="file" id="jpgInput" accept="image/jpeg">
+        <button onclick="convertJpgToPng()">Convertir y Descargar</button>
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
+
+    <div class="tool-section">
+        <h3>2. PDF a MP4 (Beta)</h3>
+        <p style="font-size: 0.7rem;">Nota: Para PDFs, esta versión básica extrae texto/metadata. Para video real se requiere ffmpeg.wasm.</p>
+        <input type="file" id="pdfInput" accept="application/pdf">
+        <button onclick="convertPdfToMp4()">Procesar PDF</button>
+        <div id="pdfStatus" class="status"></div>
+    </div>
+</div>
+
+<script>
+    // --- Lógica JPG a PNG ---
+    function convertJpgToPng() {
+        const input = document.getElementById('jpgInput');
+        if (!input.files[0]) return alert("Selecciona un archivo JPG");
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.getElementById('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                
+                const link = document.createElement('a');
+                link.download = 'imagen_convertida.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+
+    // --- Lógica PDF (Esquema Inicial) ---
+    async function convertPdfToMp4() {
+        const input = document.getElementById('pdfInput');
+        const status = document.getElementById('pdfStatus');
+        if (!input.files[0]) return alert("Selecciona un PDF");
+
+        status.innerText = "Leyendo PDF...";
+        const arrayBuffer = await input.files[0].arrayBuffer();
+        const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+        const pages = pdfDoc.getPages();
+        
+        status.innerText = `PDF cargado: ${pages.length} páginas. Generando video (Simulado)...`;
+        
+        // Aquí se integraría ffmpeg.wasm para renderizar cada página como frame
+        setTimeout(() => {
+            alert("El procesamiento de PDF a MP4 requiere un entorno con SharedArrayBuffer configurado en GitHub Pages.");
+            status.innerText = "Listo.";
+        }, 2000);
+    }
+</script>
+
+</body>
+</html>
