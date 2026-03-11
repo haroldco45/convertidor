@@ -11,18 +11,23 @@
     <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 
     <style>
-        :root { --primary: #2563eb; --bg: #f8fafc; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 40px 20px; color: #1e293b; }
+        :root { --primary: #2563eb; --bg: #f8fafc; --success: #16a34a; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 40px 20px; color: #1e293b; margin: 0; }
         .card { background: white; padding: 2.5rem; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 550px; }
-        h1 { text-align: center; margin-bottom: 2rem; color: #0f172a; font-weight: 800; }
+        h1 { text-align: center; margin-bottom: 2rem; color: #0f172a; font-weight: 800; margin-top: 0; }
         .tool-section { margin-bottom: 2rem; padding: 1.5rem; border: 1px solid #e2e8f0; border-radius: 12px; transition: 0.3s; }
-        .tool-section:hover { border-color: var(--primary); }
-        h3 { margin-top: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
-        input[type="file"] { margin: 15px 0; font-size: 0.9rem; width: 100%; }
-        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; transition: opacity 0.2s; }
+        .tool-section:hover { border-color: var(--primary); background-color: #fbfcfe; }
+        h3 { margin-top: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; color: #334155; }
+        input[type="file"] { margin: 15px 0; font-size: 0.9rem; width: 100%; cursor: pointer; }
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; transition: background-color 0.2s; }
+        button:hover { background-color: #1d4ed8; }
         button:disabled { background: #94a3b8; cursor: not-allowed; }
-        .status { margin-top: 12px; font-size: 0.85rem; color: #64748b; font-style: italic; min-height: 1.2rem; }
-        #log { font-family: monospace; background: #000; color: #0f0; padding: 10px; border-radius: 5px; font-size: 10px; margin-top: 10px; max-height: 100px; overflow-y: auto; display: none; }
+        
+        .status { margin-top: 12px; font-size: 0.85rem; color: #64748b; font-style: italic; min-height: 1.2rem; text-align: center; }
+        .status.success { color: var(--success); font-weight: bold; }
+        .status.error { color: #dc2626; font-weight: bold; }
+
+        #log { font-family: 'Consolas', monospace; background: #0f172a; color: #4ade80; padding: 10px; border-radius: 6px; font-size: 11px; margin-top: 15px; max-height: 120px; overflow-y: auto; display: none; border: 1px solid #334155; }
     </style>
 </head>
 <body>
@@ -31,14 +36,14 @@
     <h1>Multimedia Converter 🔄</h1>
 
     <div class="tool-section">
-        <h3>🖼️ JPG a PNG</h3>
-        <input type="file" id="jpgInput" accept="image/jpeg">
-        <button id="btnJpg" onclick="convertJpgToPng()">Convertir y Descargar</button>
-        <div id="jpgStatus" class="status"></div>
+        <h3>🖼️ PNG a JPG (Imagen)</h3>
+        <input type="file" id="pngInput" accept="image/png">
+        <button id="btnPngJpg" onclick="convertPngToJpg()">Convertir y Descargar JPG</button>
+        <div id="pngJpgStatus" class="status"></div>
     </div>
 
     <div class="tool-section">
-        <h3>📄 PDF a MP4 (Video)</h3>
+        <h3>📄 PDF a MP4 (Video Por Páginas)</h3>
         <input type="file" id="pdfInput" accept="application/pdf">
         <button id="btnPdf" onclick="convertPdfToMp4()">Generar Video MP4</button>
         <div id="pdfStatus" class="status"></div>
@@ -49,112 +54,202 @@
 </div>
 
 <script>
+    // Configuración de FFmpeg.wasm
     const { FFmpeg } = FFmpegWASM;
     const { fetchFile } = FFmpegUtil;
     let ffmpeg = null;
 
-    // --- LÓGICA JPG A PNG ---
-    function convertJpgToPng() {
-        const input = document.getElementById('jpgInput');
-        const status = document.getElementById('jpgStatus');
-        if (!input.files[0]) return alert("Selecciona un archivo JPG");
+    // --- LÓGICA CORREGIDA: PNG A JPG ---
+    function convertPngToJpg() {
+        // Actualización de referencias HTML
+        const input = document.getElementById('pngInput');
+        const status = document.getElementById('pngJpgStatus');
+        const btn = document.getElementById('btnPngJpg');
 
-        status.innerText = "Procesando...";
+        if (!input.files[0]) return alert("Por favor, selecciona un archivo PNG primero.");
+
+        btn.disabled = true;
+        status.innerText = "Procesando imagen...";
+        status.className = "status"; // Resetear clases de estilo
+
         const reader = new FileReader();
         reader.onload = function(e) {
             const img = new Image();
             img.onload = function() {
                 const canvas = document.getElementById('hiddenCanvas');
+                const ctx = canvas.getContext('2d');
+
+                // Establecer dimensiones del canvas iguales a la imagen
                 canvas.width = img.width;
                 canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
+                
+                // --- Cambio 2: Manejo de Transparencia ---
+                // PNG soporta transparencia, JPG no. Debemos dibujar un fondo sólido.
+                // Rellenamos el canvas de blanco antes de dibujar la imagen encima.
+                ctx.fillStyle = "#FFFFFF"; // Color blanco sólido
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Dibujar la imagen PNG sobre el fondo blanco
                 ctx.drawImage(img, 0, 0);
                 
+                // --- Cambio 3: Exportar como JPEG ---
+                // Convertimos el contenido del canvas a un DataURL en formato JPEG.
+                // El segundo parámetro (0.9) es la calidad de compresión (0.0 a 1.0).
+                const jpegUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+                // Crear enlace de descarga automático
                 const link = document.createElement('a');
-                link.download = 'imagen.png';
-                link.href = canvas.toDataURL('image/png');
+                // Intentar mantener el nombre original cambiando la extensión
+                const originalName = input.files[0].name;
+                const finalName = originalName.substring(0, originalName.lastIndexOf('.')) || 'imagen';
+                link.download = finalName + '.jpg';
+                link.href = jpegUrl;
                 link.click();
-                status.innerText = "¡Completado!";
+
+                status.innerText = "¡Conversión a JPG completada!";
+                status.className = "status success";
+                btn.disabled = false;
             };
+            
+            img.onerror = function() {
+                status.innerText = "Error al cargar la imagen.";
+                status.className = "status error";
+                btn.disabled = false;
+            };
+
             img.src = e.target.result;
         };
+        
+        reader.onerror = function() {
+            status.innerText = "Error al leer el archivo.";
+            status.className = "status error";
+            btn.disabled = false;
+        };
+
         reader.readAsDataURL(input.files[0]);
     }
 
-    // --- LÓGICA PDF A MP4 (REAL) ---
+    // --- LÓGICA PDF A MP4 (Se mantiene intacta, es funcional) ---
     async function convertPdfToMp4() {
         const input = document.getElementById('pdfInput');
         const btn = document.getElementById('btnPdf');
         const status = document.getElementById('pdfStatus');
         const logBox = document.getElementById('log');
 
-        if (!input.files[0]) return alert("Selecciona un PDF");
+        if (!input.files[0]) return alert("Selecciona un archivo PDF");
         
         btn.disabled = true;
         logBox.style.display = "block";
-        status.innerText = "Cargando motor de video (FFmpeg)...";
+        logBox.innerText = ""; // Limpiar logs anteriores
+        status.innerText = "Cargando motor de video (FFmpeg)... esto puede tardar la primera vez.";
+        status.className = "status";
 
         try {
-            // 1. Inicializar FFmpeg
+            // 1. Inicializar FFmpeg si no existe
             if (!ffmpeg) {
                 ffmpeg = new FFmpeg();
                 ffmpeg.on('log', ({ message }) => {
                     logBox.innerText = message;
-                    console.log(message);
+                    // Auto-scroll al final del log
+                    logBox.scrollTop = logBox.scrollHeight;
                 });
+                // Cargar el núcleo de FFmpeg desde CDN
                 await ffmpeg.load({
                     coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
                 });
             }
 
             // 2. Renderizar PDF a Imágenes usando PDF.js
-            status.innerText = "Renderizando páginas del PDF...";
+            status.innerText = "Analizando PDF y renderizando páginas...";
             const arrayBuffer = await input.files[0].arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            // Configurar worker de PDF.js (necesario si no se incluye globalmente)
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
             
-            for (let i = 1; i <= pdf.numPages; i++) {
-                status.innerText = `Renderizando página ${i} de ${pdf.numPages}...`;
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const numPages = pdf.numPages;
+            
+            // Limpiar archivos antiguos del sistema virtual de FFmpeg si existen
+            try {
+                const files = await ffmpeg.listDir('/');
+                for(const file of files) {
+                    if(file.name.startsWith('page') && file.name.endsWith('.jpg')) {
+                        await ffmpeg.deleteFile(file.name);
+                    }
+                }
+            } catch(e) { /* Carpeta vacía o error no crítico */ }
+
+            // Bucle para renderizar cada página
+            for (let i = 1; i <= numPages; i++) {
+                status.innerText = `Renderizando página ${i} de ${numPages}...`;
                 const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: 1.5 });
+                // Escala 2.0 para buena calidad de video (Full HD aprox dependiendo del PDF original)
+                const viewport = page.getViewport({ scale: 2.0 }); 
                 const canvas = document.getElementById('hiddenCanvas');
                 const context = canvas.getContext('2d');
+                
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
 
+                // Renderizar página del PDF en el canvas
                 await page.render({ canvasContext: context, viewport: viewport }).promise;
                 
-                // Convertir canvas a blob y escribir en el sistema de archivos virtual de FFmpeg
-                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+                // Convertir canvas a blob JPG (buena compresión para video)
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+                
+                // Nombre secuencial: page001.jpg, page002.jpg...
                 const fileName = `page${i.toString().padStart(3, '0')}.jpg`;
+                
+                // Escribir archivo en el sistema de archivos MEMFS de FFmpeg
                 await ffmpeg.writeFile(fileName, await fetchFile(blob));
             }
 
-            // 3. Ejecutar comando de conversión (3 segundos por página)
-            status.innerText = "Codificando video MP4...";
+            // 3. Ejecutar comando de codificación de video
+            // Configuración: 1 imagen cada 4 segundos
+            const secondsPerPage = 4;
+            status.innerText = `Codificando video MP4 (${numPages * secondsPerPage} segundos)...`;
+            
+            // Comando FFmpeg detallado
             await ffmpeg.exec([
-                '-framerate', '1/3',         // Cada imagen dura 3 segundos
-                '-i', 'page%03d.jpg',       // Patrón de archivos
-                '-c:v', 'libx264',          // Codec de video
-                '-t', `${pdf.numPages * 3}`, // Duración total
-                '-pix_fmt', 'yuv420p',      // Compatibilidad universal
-                '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', // Asegurar dimensiones pares para x264
-                'output.mp4'
+                '-framerate', `1/${secondsPerPage}`, // Velocidad de entrada: 1 imagen cada X segundos
+                '-i', 'page%03d.jpg',             // Patrón de entrada de archivos
+                '-c:v', 'libx264',                // Codec de video H.264
+                '-r', '30',                       // Framerate de salida constante (para compatibilidad)
+                '-pix_fmt', 'yuv420p',            // Formato de pixel compatible con todos los reproductores
+                '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p', // Asegurar dimensiones pares y color correcto
+                'output.mp4'                      // Archivo de salida
             ]);
 
-            // 4. Descargar el resultado
+            // 4. Leer el resultado y descargar
+            status.innerText = "Descargando video generado...";
             const data = await ffmpeg.readFile('output.mp4');
+            
+            // Crear URL para el objeto binario
             const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+            
+            // Descarga automática
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'pdf_presentacion.mp4';
+            // Nombre de descarga basado en el PDF original
+            const originalPdfName = input.files[0].name;
+            const finalVideoName = originalPdfName.substring(0, originalPdfName.lastIndexOf('.')) || 'presentacion';
+            a.download = finalVideoName + '.mp4';
             a.click();
 
-            status.innerText = "¡Video generado con éxito!";
+            status.innerText = "¡Video MP4 generado con éxito!";
+            status.className = "status success";
+            
+            // Limpieza diferida de memoria
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+
         } catch (error) {
-            console.error(error);
-            status.innerText = "Error: " + error.message;
+            console.error("Error detallado:", error);
+            status.innerText = "Ocurrió un error: " + error.message;
+            status.className = "status error";
+            logBox.innerText += "\n[ERROR] " + error.message;
         } finally {
+            // Reactivar botón y ocultar logs si se desea
             btn.disabled = false;
+            // logBox.style.display = "none"; // Descomentar para ocultar logs al finalizar
         }
     }
 </script>
